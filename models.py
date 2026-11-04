@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from datetime import datetime, date, timedelta
 class Room(ABC):
     def __init__(self, room_no, room_type, floor):
         self.room_no = room_no
@@ -116,3 +117,97 @@ class Guest:
             f"Mobile Number: {self.__mobile_no}\n"
             f"Email: {self.__email}\n"
             f"Number of Guests: {self.__no_of_guests}")
+        
+
+class Booking():
+    def __init__(self, booking_id, guest, room, check_in, check_out, total_amount):
+        self.set_booking_id(booking_id)
+        self.set_guest(guest)
+        self.set_room(room)
+        self.set_check_in(check_in)
+        self.set_check_out(check_out)
+        self.__status = "CONFIRMED"
+        self.set_total_amount(total_amount)
+
+    def set_booking_id(self, booking_id):
+        if not booking_id.startswith("BK") or not booking_id[2:].isdigit():
+            raise ValueError("Invalid Booking ID format")
+        self.__booking_id = booking_id
+    def get_booking_id(self):
+        return self.__booking_id
+    
+    def set_guest(self, guest):
+        if not isinstance(guest, Guest):
+            raise ValueError("Ivalid guest object")
+        self.__guest = guest
+    def get_guest(self):
+        return self.__guest
+    
+    def set_room(self, room):
+        if not isinstance(room, Room):
+            raise ValueError("INvalid room objects")
+        self.__room = room
+    def get_room(self):
+        return self.__room
+    
+    def set_check_in(self, check_in):
+        try:
+            check_in = datetime.strptime(check_in,"%d-%m-%Y").date()
+        except ValueError:
+            raise ValueError("INvalid Check-in date fromat")
+        today = date.today()
+        if check_in < today or check_in > today + timedelta(days=180):
+            raise ValueError("Date must be today or 180 days from today")
+        self.__check_in = check_in
+    def get_check_in(self):
+        return self.__check_in
+    
+    def set_check_out(self, check_out):
+        try:
+            check_out = datetime.strptime(check_out,"%d-%m-%Y").date()
+        except ValueError:
+            raise ValueError("Invalid check out date format")
+        if check_out <= self.__check_in:
+            raise ValueError("Check out should be after checkin")
+        no_of_nights = (check_out - self.__check_in).days
+        if (no_of_nights < 1 or no_of_nights > 30):
+            raise ValueError("Can't stay more than 30 days")
+        self.__check_out = check_out
+    def get_check_out(self):
+        return self.__check_out
+    
+    def set_status(self, status):
+        status = status.strip().upper()
+        if status not in ("CONFIRMED", "CHECKED_IN", "CHECKED_OUT", "CANCELLED"):
+            raise ValueError("Invalid status")
+        if self.__status == "CONFIRMED":
+            if status not in("CHECKED_IN", "CANCELLED"):
+                raise ValueError("Only check_in or cancelled after confirmed")
+        elif self.__status == "CHECKED_IN":
+            if status != "CHECKED_OUT":
+                raise ValueError("Only has to check out after check in")
+        else:
+            raise ValueError("Any other status change must be rejected")
+        self.__status = status
+    
+    def get_status(self):
+        return self.__status
+    
+    
+    def set_total_amount(self, total_amount):
+        if total_amount < 0:
+            raise ValueError("Amount cannot be negative")
+
+        self.__total_amount = total_amount
+
+    def get_total_amount(self):
+        return self.__total_amount
+    
+    def __str__(self):
+        return (f"Booking Id: {self.__booking_id}\n"
+                f"Guest Details: {self.__guest}\n"
+                f"Room Details: {self.__room}\n"
+                f"Chech-in Time: {self.__check_in}\n"
+                f"Check_out time: {self.__check_out}\n"
+                f"Status : {self.__status}\n"
+                f"Total Amount: {self.__total_amount}")
