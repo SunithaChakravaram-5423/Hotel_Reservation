@@ -1,4 +1,6 @@
 import csv
+from models import StandardRoom, DeluxeRoom, SuiteRoom
+
 def load_rooms():
     rooms=[]
     file_path = r"C:\Users\sunitha.chakravaram\OneDrive - Acuvate Software Private Limited\Desktop\hotel_reservation\rooms.csv"
@@ -40,3 +42,22 @@ def load_rooms():
 
     print(len(valid_rooms))
     print(len(invalid_rooms))
+    
+    rooms_objects = []
+    for row in rooms_objects:
+        room_no = int(row["room_no"])
+        room_type = row["room_type"].strip().capitalize()
+        floor = int(row["floor"])
+        
+        if room_type == "Standard":
+            room = StandardRoom(room_no, room_type, floor)
+            
+        elif room_type == "Deluxe":
+            room = DeluxeRoom(room_no, room_type, floor)
+        
+        elif room_type == "Suite":
+            room = SuiteRoom(room_no, room_type, floor)
+            
+        rooms_objects.append(room)
+    return rooms_objects, valid_rooms, invalid_rooms
+        
