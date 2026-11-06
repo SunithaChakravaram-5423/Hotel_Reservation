@@ -2,6 +2,9 @@ from datetime import datetime, date, timedelta
 from .database import conn, cursor, guest_registration
 from .hotel import rooms_objects
 from .pricing import calculate_price
+from .exceptions import RoomUnavailableError, BookingNotFoundError, InvalidStatusChangeError, InvalidDateError
+import os
+
 def Booking():
     mobile_no = guest_registration()
     if mobile_no is None:
@@ -81,7 +84,7 @@ def Booking():
                 print(room.room_type, room.room_no)
         else:
             print("No alternative rooms available")
-        return
+        raise RoomUnavailableError("No room of the requested type is available for these dates.")
 
     print("Number of nights:", no_of_nights)
     
@@ -108,13 +111,219 @@ def Booking():
     payment = input("\nProceed with full payment? (yes/no): ").strip().lower()
 
     if payment == "yes":
-        cursor.execute("""INSERT INTO Booking(mobile_no, room_no, check_in, check_out, no_of_guests, status, total_amount) VALUES (?, ?, ?, ?, ?, ?, ?)""", (mobile_no, lowest_room.room_no, check_in_db, check_out_db, no_of_guests, "CONFIRMED", round(total_amount, 2)))
+        cursor.execute("""INSERT INTO Booking(mobile_no, room_no, check_in, check_out, no_of_guests, breakfast_choice, status, total_amount) VALUES (?, ?, ?, ?, ?, ?, ?)""", (mobile_no, lowest_room.room_no, check_in_db, check_out_db, no_of_guests, breakfast_choice, "CONFIRMED", round(total_amount, 2)))
         conn.commit()
         booking_id = cursor.lastrowid
+        display_id = f"BK{booking_id + 999}"
         print("\nPayment successful!")
         print("Booking confirmed!")
-        print("Booking ID:", booking_id)
+        print("Booking ID:", display_id)
     else:
         print("\nPayment cancelled. Booking not confirmed.")
         
+        
+def check_in():
+    booking_id = input("ENter booking Id: ").strip()
+    if not booking_id.startswith("BK") or not booking_id[2:].isdigit():
+        print("Invalid booking ID")
+        return
+    db_booking_id = int(booking_id[2:])-999
+    if db_booking_id <= 0:
+        print("Invalid booking Id")
+        return
+    cursor.execute("""SELECT booking_id, mobile_no, room_no, check_in, check_out, no_of_guests, status, total_amount, breakfast_choice
+    FROM Booking WHERE booking_id = ?""", (db_booking_id,))
+    booking = cursor.fetchone()
+    
+    if booking is None:
+        raise BookingNotFoundError("Booking ID does not exist")
+    if booking[6] is not "CONFIRMED":
+        raise InvalidStatusChangeError("Booking status is not confirmed yet")
+    today = date.today().strftime("%Y-%m-%d")
+    if booking[3] != today:
+        raise InvalidDateError("Invalid check-in date, Check-in is allowed only on the booking check-in date")
+    
+    cursor.execute("update booking set status = ? where booking_id = ?", ("CHECKED_IN", db_booking_id))
+    conn.commit()
+    
+    print("Check-in successfully")
+    print("Booking ID:", booking_id)
+    print("Room Number:", booking[2])      
      
+def check_out():
+    booking_id = input("Enter booking ID: ").strip()
+    if not booking_id.startswith("BK") or not booking_id[2:].isdigit():
+        print("Invalid booking ID format")
+        return
+    db_booking_id = int(booking_id[2:]) - 999
+    if db_booking_id <= 0:
+        print("Invalid booking ID")
+        return
+    cursor.execute("SELECT * FROM Booking WHERE booking_id = ?", (db_booking_id,))
+    booking = cursor.fetchone()
+    if booking is None:
+        raise BookingNotFoundError("Booking ID does not exist")
+    if booking[6] != "CHECKED_IN":
+        raise InvalidStatusChangeError("Only checked-in bookings can be checked out")
+    today = date.today().strftime("%Y-%m-%d")
+    if booking[4] != today:
+        raise InvalidDateError("Check-out is allowed on the scheduled check-out day")
+    cursor.execute("UPDATE Booking SET status = ? WHERE booking_id = ?", ("CHECKED_OUT", db_booking_id))
+    conn.commit()
+    print("\nCheck-out successful!")
+    print("Booking ID:", booking_id)
+    print("Room Number:", booking[2])
+
+    generate_invoice(booking)
+    
+    
+def generate_invoice(booking):
+    booking_id = booking[0]
+    mobile_no = booking[1]
+    room_no = booking[2]
+    check_in = datetime.strptime(booking[3], "%Y-%m-%d").date()
+    check_out = datetime.strptime(booking[4], "%Y-%m-%d").date()
+    no_of_guests = booking[5]
+    total_amount = booking[7]
+    breakfast_choice = booking[8]
+
+    cursor.execute("SELECT name, email FROM Guests WHERE mobile_no = ?",(mobile_no,))
+    guest = cursor.fetchone()
+    if guest is None:
+        print("Guest details not found")
+        return
+
+    room = None
+    for rooms in rooms_objects:
+        if rooms.room_no == room_no:
+            room = rooms
+            break
+    if room is None:
+        print("Room details not found")
+        return
+
+    no_of_nights = (check_out - check_in).days
+    invoice = f"""Stayeasy Hotel Invoice
+    Booking Id : BK{booking_id+999}
+    Guest Name : {guest[0]}
+    Mobile Number : {mobile_no}
+    Email : {guest[1]}
+    
+    Room Number: {room_no}
+    Room Type : {room.room_type}
+    Number of Guests: {no_of_guests}
+    
+    Check-in : {check_in}
+    Check-out : {check_out}
+    Number of Nights : {no_of_nights}
+    
+    breakfast : {breakfast_choice}
+    
+    -----------------------------------
+    Total Amount Paid : {total_amount:.2f}
+    Payment Status : PAID
+    Booking Status : CHECKED_OUT
+    -----------------------------------
+    
+    ThankYou visit again........
+    """
+
+    file_name = f"invoices/BK{booking_id+999}.txt"
+    with open(file_name, "w", newline="") as file:
+        file.write(invoice)
+    print("Invoice generated successfully!")
+    print("Invoice saved as:", file_name)
+    
+    
+def cancel_booking():
+    booking_id = input("Enter booking Id: ").strip()
+    if not booking_id.startswith("BK") or not booking_id[2:].isdigit():
+        print("Invalid booking ID format")
+        return
+    db_booking_id = int(booking_id[2:]) - 999
+    if db_booking_id <= 0:
+        print("Invalid booking ID")
+        return
+    cursor.execute("SELECT * FROM Booking WHERE booking_id = ?", (db_booking_id,))
+    booking = cursor.fetchone()
+    if booking is None:
+        raise BookingNotFoundError("Booking ID does not exist")
+    if booking[6] != "CONFIRMED":
+        raise InvalidStatusChangeError("Can't cancel the room now")
+    today = date.today()
+    check_in_date = datetime.strptime(check_in, "%Y-%m-%d").date()
+    canel_date = (check_in_date - today).days
+    if canel_date >= 7:
+        refund_amt = booking[7]
+    elif canel_date >=2 and canel_date <= 6:
+        refund_amt = booking.total_amount * 0.50
+    else:
+        refund_amt = 0
+    cursor.execute("update Booking set status = ? where booking id = ?", ("CANCELLED", db_booking_id))
+    conn.commit()
+    
+    print("Booking cancelled successfully")
+    print("Refund Amount is: ", refund_amt)
+    
+    
+def view_booking_details():
+    booking_id = input("Enter booking Id: ").strip()
+    if not booking_id.startswith("BK") or not booking_id[2:].isdigit():
+        print("Invalid booking ID format")
+        return
+    db_booking_id = int(booking_id[2:]) - 999
+    if db_booking_id <= 0:
+        print("Invalid booking ID")
+        return
+    cursor.execute("SELECT * FROM Booking WHERE booking_id = ?", (db_booking_id,))
+    booking = cursor.fetchone()
+    if booking is None:
+        raise BookingNotFoundError("Booking ID does not exist")
+    print("......Guest details.......")
+    cursor.execute("select name, email from Guests where mobile_no = ?", (booking[1]))
+    guest = cursor.fetchone()
+    if guest is None:
+        print("Guest not found")
+        return
+    
+    print("Booking Id: ", f"BK{booking[0] + 999}")
+    print("Guest Name:", guest[0])
+    print("Mobile Number:", booking[1])
+    print("Email:", guest[1])
+    print("Room Number:", booking[2])
+    print("Check-in:", booking[3])
+    print("Check-out:", booking[4])
+    print("Number of Guests:", booking[5])
+    print("Breakfast:", booking[8])
+    print("Total Amount:", booking[7])
+    print("Booking Status:", booking[6])
+    
+    
+def guest_stay_history():
+    mobile_no = input("ENter mobile number: ")
+    cursor.execute("select name, email from Guests where mobile_no = ?", (mobile_no,))
+    guest = cursor.fetchone()
+    if guest is None:
+        print("No guest found")
+        return
+    cursor.execute("select * from Booking where mobile_no = ?",(mobile_no,))
+    bookings = cursor.fetchall()
+    if len(bookings) == 0:
+        print("No bookings found")
+        return
+    print("\nGuest Stay History")
+    print("Guest Name:", guest[0])
+    print("Mobile Number:", mobile_no)
+    print("Email:", guest[1])
+    
+    for booking in bookings:
+        print("Booking Id: ", f"BK{booking[0]+999}")
+        print("Room Number:", booking[2])
+        print("Check-in date: ", booking[3])
+        print("Check-out date: ", booking[4])
+        print("Total Amount: ", booking[7])
+        print("Status: ", booking[6])
+    print("\nTotal Number of Bookings:", len(bookings))
+    
+    
+    
