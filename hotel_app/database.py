@@ -4,6 +4,7 @@ conn = sqlite3.connect(r"C:\Users\sunitha.chakravaram\OneDrive - Acuvate Softwar
 cursor = conn.cursor()
 cursor.execute("PRAGMA foreign_keys = ON")
 # cursor.execute("drop table Guests")
+# cursor.execute("drop table Booking")
 cursor.execute("""create table if not exists Guests(
     mobile_no text primary key,
     name text not null,
@@ -17,6 +18,7 @@ CREATE TABLE IF NOT EXISTS Booking(
     check_in TEXT NOT NULL,
     check_out TEXT NOT NULL,
     no_of_guests INTEGER NOT NULL,
+    breakfast_choice TEXT NOT NULL DEFAULT 'no',
     status TEXT NOT NULL,
     total_amount REAL NOT NULL,
     FOREIGN KEY(mobile_no) REFERENCES Guests(mobile_no))""")
