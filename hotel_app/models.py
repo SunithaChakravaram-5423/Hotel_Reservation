@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 from datetime import datetime, date, timedelta
+from .exceptions import InvalidDateError, InvalidStatusChangeError
+
 class Room(ABC):
     def __init__(self, room_no, room_type, floor):
         self.room_no = room_no
@@ -157,7 +159,7 @@ class Booking():
             raise ValueError("INvalid Check-in date fromat")
         today = date.today()
         if check_in < today or check_in > today + timedelta(days=180):
-            raise ValueError("Date must be today or 180 days from today")
+            raise InvalidDateError("Date must be today or 180 days from today")
         self.__check_in = check_in
     def get_check_in(self):
         return self.__check_in
@@ -171,7 +173,7 @@ class Booking():
             raise ValueError("Check out should be after checkin")
         no_of_nights = (check_out - self.__check_in).days
         if (no_of_nights < 1 or no_of_nights > 30):
-            raise ValueError("Can't stay more than 30 days")
+            raise InvalidDateError("Can't stay more than 30 days")
         self.__check_out = check_out
     def get_check_out(self):
         return self.__check_out
@@ -179,15 +181,15 @@ class Booking():
     def set_status(self, status):
         status = status.strip().upper()
         if status not in ("CONFIRMED", "CHECKED_IN", "CHECKED_OUT", "CANCELLED"):
-            raise ValueError("Invalid status")
+            raise InvalidStatusChangeError("Invalid status")
         if self.__status == "CONFIRMED":
             if status not in("CHECKED_IN", "CANCELLED"):
-                raise ValueError("Only check_in or cancelled after confirmed")
+                raise InvalidStatusChangeError("Only check_in or cancelled after confirmed")
         elif self.__status == "CHECKED_IN":
             if status != "CHECKED_OUT":
-                raise ValueError("Only has to check out after check in")
+                raise InvalidStatusChangeError("Only has to check out after check in")
         else:
-            raise ValueError("Any other status change must be rejected")
+            raise InvalidStatusChangeError("Any other status change must be rejected")
         self.__status = status
     
     def get_status(self):
