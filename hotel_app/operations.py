@@ -3,7 +3,91 @@ from .database import conn, cursor, guest_registration
 from .hotel import rooms_objects
 from .pricing import calculate_price
 from .exceptions import RoomUnavailableError, BookingNotFoundError, InvalidStatusChangeError, InvalidDateError
-import os
+
+def search_availability():
+    room_type = input("Enter room type: ").strip().capitalize()
+
+    if room_type not in ("Standard", "Deluxe", "Suite"):
+        print("Invalid room type")
+        return
+    try:
+        no_of_guests = int(input("Enter number of guests: "))
+        if no_of_guests < 1:
+            print("At least 1 guest is required")
+            return
+        check_in = input("Enter check-in date (DD-MM-YYYY): ").strip()
+        check_out = input("Enter check-out date (DD-MM-YYYY): ").strip()
+
+        check_in_date = datetime.strptime(check_in, "%d-%m-%Y").date()
+        check_out_date = datetime.strptime(check_out, "%d-%m-%Y").date()
+
+        today = date.today()
+        if check_in_date < today:
+            print("Check-in date cannot be in the past")
+            return
+        if check_in_date > today + timedelta(days=180):
+            print("Check-in date cannot be more than 180 days ahead")
+            return
+        if check_out_date <= check_in_date:
+            print("Check-out must be after check-in")
+            return
+        no_of_nights = (check_out_date - check_in_date).days
+        if no_of_nights > 30:
+            print("Maximum stay allowed is 30 nights")
+            return
+        check_in_db = check_in_date.strftime("%Y-%m-%d")
+        check_out_db = check_out_date.strftime("%Y-%m-%d")
+    except ValueError:
+        print("Invalid input. Please enter valid dates and guest count.")
+        return
+    
+    available_rooms = []
+    for room in rooms_objects:
+        if room.room_type == room_type and no_of_guests <= room.maximum_guests():
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM Booking
+                WHERE room_no = ?
+                AND check_in < ?
+                AND check_out > ?
+                AND status NOT IN ('CANCELLED', 'CHECKED_OUT')
+            """, (room.room_no, check_out_db, check_in_db))
+            cnt = cursor.fetchone()[0]
+            if cnt == 0:
+                available_rooms.append(room)
+
+    print("\nRoom Availability")
+    if available_rooms:
+        print("Available rooms for", room_type)
+        for room in available_rooms:
+            print("Room Number:", room.room_no)
+        print("Total available rooms:", len(available_rooms))
+    else:
+        print("No rooms available for the requested room type.")
+    if not available_rooms:
+        alternative_rooms = []
+        for room in rooms_objects:
+            if room.room_type != room_type and no_of_guests <= room.maximum_guests():
+                cursor.execute("""
+                    SELECT COUNT(*)
+                    FROM Booking
+                    WHERE room_no = ?
+                    AND check_in < ?
+                    AND check_out > ?
+                    AND status NOT IN ('CANCELLED', 'CHECKED_OUT')
+                """, (room.room_no, check_out_db, check_in_db))
+                cnt = cursor.fetchone()[0]
+                if cnt == 0:
+                    alternative_rooms.append(room)
+        if alternative_rooms:
+            print("\nAvailable alternative rooms:")
+            for room in alternative_rooms:
+                print("Room Type:", room.room_type,"     Room Number:", room.room_no)
+        else:
+            print("No alternative rooms available.")
+    print("\nNumber of Nights:", no_of_nights)
+
+
 
 def Booking():
     mobile_no = guest_registration()
@@ -95,7 +179,7 @@ def Booking():
         while breakfast_choice not in ("yes", "no"):
             print("Please enter yes or no")
             breakfast_choice = input("Do you want breakfast? (yes/no): ").strip().lower()
-            
+
     room_charges, gst, total_amount = calculate_price(lowest_room,check_in_date,check_out_date,no_of_guests,mobile_no, breakfast_choice)
     
     print("\n---------- FINAL BILL ----------")
@@ -111,7 +195,7 @@ def Booking():
     payment = input("\nProceed with full payment? (yes/no): ").strip().lower()
 
     if payment == "yes":
-        cursor.execute("""INSERT INTO Booking(mobile_no, room_no, check_in, check_out, no_of_guests, breakfast_choice, status, total_amount) VALUES (?, ?, ?, ?, ?, ?, ?)""", (mobile_no, lowest_room.room_no, check_in_db, check_out_db, no_of_guests, breakfast_choice, "CONFIRMED", round(total_amount, 2)))
+        cursor.execute("""INSERT INTO Booking(mobile_no, room_no, check_in, check_out, no_of_guests, breakfast_choice, status, total_amount, room_charges, gst_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", (mobile_no, lowest_room.room_no, check_in_db, check_out_db, no_of_guests, breakfast_choice, "CONFIRMED", round(total_amount, 2), round(room_charges, 2), round(gst, 2)))
         conn.commit()
         booking_id = cursor.lastrowid
         display_id = f"BK{booking_id + 999}"
@@ -137,7 +221,7 @@ def check_in():
     
     if booking is None:
         raise BookingNotFoundError("Booking ID does not exist")
-    if booking[6] is not "CONFIRMED":
+    if booking[6] != "CONFIRMED":
         raise InvalidStatusChangeError("Booking status is not confirmed yet")
     today = date.today().strftime("%Y-%m-%d")
     if booking[3] != today:
@@ -229,7 +313,7 @@ def generate_invoice(booking):
     """
 
     file_name = f"invoices/BK{booking_id+999}.txt"
-    with open(file_name, "w", newline="") as file:
+    with open(file_name, "w", encoding="utf-8") as file:
         file.write(invoice)
     print("Invoice generated successfully!")
     print("Invoice saved as:", file_name)
@@ -248,23 +332,24 @@ def cancel_booking():
     booking = cursor.fetchone()
     if booking is None:
         raise BookingNotFoundError("Booking ID does not exist")
-    if booking[6] != "CONFIRMED":
+    if booking[7] != "CONFIRMED":
         raise InvalidStatusChangeError("Can't cancel the room now")
     today = date.today()
-    check_in_date = datetime.strptime(check_in, "%Y-%m-%d").date()
+    check_in_date = datetime.strptime(booking[3], "%Y-%m-%d").date()
     canel_date = (check_in_date - today).days
     if canel_date >= 7:
-        refund_amt = booking[7]
-    elif canel_date >=2 and canel_date <= 6:
-        refund_amt = booking.total_amount * 0.50
+        refund_amt = booking[8]
+    elif canel_date >= 2:
+        refund_amt = booking[8] * 0.50
     else:
         refund_amt = 0
-    cursor.execute("update Booking set status = ? where booking id = ?", ("CANCELLED", db_booking_id))
+    cancellation_amount = round(booking[8] - refund_amt, 2)
+    cursor.execute("update Booking set status = ?, cancellation_amount_kept = ? where booking_id = ?", ("CANCELLED", cancellation_amount, db_booking_id))
     conn.commit()
     
     print("Booking cancelled successfully")
     print("Refund Amount is: ", refund_amt)
-    
+    print("Cancellation Amount :", cancellation_amount)
     
 def view_booking_details():
     booking_id = input("Enter booking Id: ").strip()
@@ -280,7 +365,7 @@ def view_booking_details():
     if booking is None:
         raise BookingNotFoundError("Booking ID does not exist")
     print("......Guest details.......")
-    cursor.execute("select name, email from Guests where mobile_no = ?", (booking[1]))
+    cursor.execute("select name, email from Guests where mobile_no = ?", (booking[1],))
     guest = cursor.fetchone()
     if guest is None:
         print("Guest not found")
@@ -294,9 +379,9 @@ def view_booking_details():
     print("Check-in:", booking[3])
     print("Check-out:", booking[4])
     print("Number of Guests:", booking[5])
-    print("Breakfast:", booking[8])
-    print("Total Amount:", booking[7])
-    print("Booking Status:", booking[6])
+    print("Breakfast:", booking[6])
+    print("Total Amount:", booking[8])
+    print("Booking Status:", booking[7])
     
     
 def guest_stay_history():
@@ -321,8 +406,8 @@ def guest_stay_history():
         print("Room Number:", booking[2])
         print("Check-in date: ", booking[3])
         print("Check-out date: ", booking[4])
-        print("Total Amount: ", booking[7])
-        print("Status: ", booking[6])
+        print("Total Amount: ", booking[8])
+        print("Status: ", booking[7])
     print("\nTotal Number of Bookings:", len(bookings))
     
     
