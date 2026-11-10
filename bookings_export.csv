@@ -1,0 +1,2 @@
+Booking ID,Mobile Number,Guest Name,Email,Room Number,Check-in,Check-out,Number of Guests,Breakfast,Status,Total Amount,Room Charges,GST,Cancellation Amount Kept
+BK1000,9876543210,Sunitha,sunitha@gmail.com,201,2026-11-10,2026-11-13,3,no,CANCELLED,16128.0,14400.0,1728.0,8064.0
