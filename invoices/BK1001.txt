@@ -1,0 +1,24 @@
+Stayeasy Hotel Invoice
+    Booking Id : BK1001
+    Guest Name : Satya
+    Mobile Number : 9390862039
+    Email : satya@gmail.com
+    
+    Room Number: 101
+    Room Type : Standard
+    Number of Guests: 2
+    
+    Check-in : 2026-11-10
+    Check-out : 2026-11-11
+    Number of Nights : 1
+    
+    breakfast : yes
+    
+    -----------------------------------
+    Total Amount Paid : 3584.00
+    Payment Status : PAID
+    Booking Status : CHECKED_OUT
+    -----------------------------------
+    
+    ThankYou visit again........
+    
