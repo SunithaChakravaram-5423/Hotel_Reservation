@@ -221,7 +221,7 @@ def check_in():
     
     if booking is None:
         raise BookingNotFoundError("Booking ID does not exist")
-    if booking[6] != "CONFIRMED":
+    if booking[7] != "CONFIRMED":
         raise InvalidStatusChangeError("Booking status is not confirmed yet")
     today = date.today().strftime("%Y-%m-%d")
     if booking[3] != today:
@@ -247,11 +247,11 @@ def check_out():
     booking = cursor.fetchone()
     if booking is None:
         raise BookingNotFoundError("Booking ID does not exist")
-    if booking[6] != "CHECKED_IN":
+    if booking[7] != "CHECKED_IN":
         raise InvalidStatusChangeError("Only checked-in bookings can be checked out")
     today = date.today().strftime("%Y-%m-%d")
-    if booking[4] != today:
-        raise InvalidDateError("Check-out is allowed on the scheduled check-out day")
+    # if booking[4] != today:
+    #     raise InvalidDateError("Check-out is allowed on the scheduled check-out day")
     cursor.execute("UPDATE Booking SET status = ? WHERE booking_id = ?", ("CHECKED_OUT", db_booking_id))
     conn.commit()
     print("\nCheck-out successful!")
@@ -268,8 +268,8 @@ def generate_invoice(booking):
     check_in = datetime.strptime(booking[3], "%Y-%m-%d").date()
     check_out = datetime.strptime(booking[4], "%Y-%m-%d").date()
     no_of_guests = booking[5]
-    total_amount = booking[7]
-    breakfast_choice = booking[8]
+    total_amount = booking[8]
+    breakfast_choice = booking[6]
 
     cursor.execute("SELECT name, email FROM Guests WHERE mobile_no = ?",(mobile_no,))
     guest = cursor.fetchone()
